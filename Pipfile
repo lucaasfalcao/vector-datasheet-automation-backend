@@ -1,0 +1,13 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[requires]
+python_version = "3.10"
+
+[scripts]
+start = "bash -c 'export MSYS2_ENV_CONV_EXCL='*' && pip freeze  > requirements.txt && python main.py'"
+
+[packages]
+pdfplumber = "*"
