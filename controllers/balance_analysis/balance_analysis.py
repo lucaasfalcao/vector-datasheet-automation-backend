@@ -1,6 +1,7 @@
 """Controller for Balance Analysis operations."""
 
 import os
+import time
 from fastapi import File, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from services.balance_analysis import balance_analysis as balance_analysis_service
@@ -9,7 +10,7 @@ from .config import BALANCE_ANALYSIS, router
 
 @router.post(
     path='/balance-analysis',
-    summary='Update Balance Analysis Automation',
+    summary='Balance Analysis Update Automation',
     tags=[BALANCE_ANALYSIS['name']],
     response_class=FileResponse,
 )
@@ -17,8 +18,9 @@ async def update_balance_analysis(
     files: list[UploadFile] = File(...),
 ) -> str:
     """Update the balance analysis automation."""
-    excel_path = os.path.join("static", "files", "analise_balanco_modelo.xlsx")
-    # Definições de colunas por ano
+    template_path = os.path.join("static", "files", "analise_balanco_modelo.xlsx")
+    output_filename = f"balance_analysis_{int(time.time())}.xlsx"
+    output_path = os.path.join("static", "files", output_filename)
     col_map = {
         '2021': ('B', 'B'),
         '2022': ('C', 'D'),
@@ -40,6 +42,8 @@ async def update_balance_analysis(
         try:
             balance_analysis_service.process_balance_analysis_pdf(
                 pdf_bytes=pdf_bytes,
+                template_path=template_path,
+                output_path=output_path,
                 balanco_column_prefix=bal_col,
                 dre_column_prefix=dre_col
             )
@@ -50,7 +54,7 @@ async def update_balance_analysis(
             ) from e
 
     return FileResponse(
-        path=excel_path,
+        path=output_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=os.path.basename(excel_path)
+        filename=output_filename
     )

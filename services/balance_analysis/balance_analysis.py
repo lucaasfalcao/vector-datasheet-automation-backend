@@ -1,12 +1,14 @@
 """Balance Analysis Automation Service"""
 
 import io
+import os
 import re
 import unicodedata
+from typing import List, Union, Tuple
+import shutil
 import pdfplumber
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
-from typing import List, Union, Tuple
 
 
 def normalize_text(text):
@@ -83,22 +85,25 @@ def extract_final_balance_by_label(pdf_source: str, label_text: str) -> str:
 
 
 def update_balance_sheet(
-        excel_path: str,
+        template_path: str,
+        output_path: str,
         value: float,
         cell: str,
         sheet_name: str = None,
-        is_currency=True
+        is_currency: bool =True
     ) -> None:
     """Updates the specified cell in an Excel sheet with the given value."""
 
-    wb = load_workbook(excel_path)
+    if not os.path.exists(output_path):
+        shutil.copyfile(template_path, output_path)
+    wb = load_workbook(output_path)
     ws = wb[sheet_name] if sheet_name else wb.active
     ws[cell] = value
     if is_currency:
         ws[cell].number_format = '"R$" #,##0.00'
     else:
         ws[cell].alignment = Alignment(horizontal='center', vertical='center')
-    wb.save(excel_path)
+    wb.save(output_path)
 
 
 def parse_currency_str(val_str: str) -> float:
@@ -117,11 +122,11 @@ def parse_currency_str(val_str: str) -> float:
     return -num if negative else num
 
 
-def handle_balanco(pdf_source, excel_path, column_prefix, sheet_name=None):
+def handle_balanco(pdf_source, template_path, output_path, column_prefix, sheet_name=None):
     """Handles the balance sheet extraction and updates the Excel file."""
 
     entity = extract_entity_name(pdf_source)
-    update_balance_sheet(excel_path, entity, "B3", sheet_name, is_currency=False)
+    update_balance_sheet(template_path, output_path, entity, "B3", sheet_name, is_currency=False)
 
     mapping = {
         "ATIVO": 7,
@@ -136,7 +141,6 @@ def handle_balanco(pdf_source, excel_path, column_prefix, sheet_name=None):
         "FORNECEDORES": 16,
         "SALARIOS E ENCARGOS": 17,
         "TRIBUTOS A RECOLHER": 18,
-        "EMPRÉSTIMOS E FINANCIAMENTOS": 19,
         "PASSIVO NÃO CIRCULANTE": 20,
         "PATRIMONIO LIQUIDO": 21,
     }
@@ -146,13 +150,20 @@ def handle_balanco(pdf_source, excel_path, column_prefix, sheet_name=None):
             val_str = extract_final_balance_by_label(pdf_source, label)
             val_num = parse_currency_str(val_str)
             cell = f"{column_prefix}{row}"
-            update_balance_sheet(excel_path, val_num, cell, sheet_name, is_currency=True)
+            update_balance_sheet(
+                template_path=template_path,
+                output_path=output_path,
+                value=val_num,
+                cell=cell,
+                sheet_name=sheet_name,
+                is_currency=True
+            )
             print(f"[Balanço] '{label}' -> {cell} = {val_num}")
         except Exception as e:
             print(f"[Balanço] erro ao processar '{label}': {e}")
 
 
-def handle_dre(pdf_source, excel_path, column_prefix, sheet_name=None):
+def handle_dre(pdf_source, template_path, output_path, column_prefix, sheet_name=None):
     """
     Lógica inicial para preencher a aba de Demonstração de Resultado do Exercício.
     Implementar mapeamento e extração específicos.
@@ -163,7 +174,9 @@ def handle_dre(pdf_source, excel_path, column_prefix, sheet_name=None):
         (["CUSTOS OPERACIONAIS", "CUSTO DAS VENDAS/SERVICOS"], 10),
         ("DESPESAS OPERACIONAIS", 11),
         ("DESPESAS FINANCEIRAS", 14),
-        (["OUTRAS DESPESAS/RECEITAS", "OUTRAS RECEITAS E DESPESAS"], 15),
+        (["OUTRAS DESPESAS/RECEITAS",
+          "OUTRAS RECEITAS E DESPESAS",
+          "DESPESAS FINANCEIRAS LIQUIDAS"], 15),
         (["LUCRO (PREJUIZO) LIQUIDO DO EXERCICIO", "RESULTADO LIQUIDO"], 17),
     ]
 
@@ -197,7 +210,8 @@ def handle_dre(pdf_source, excel_path, column_prefix, sheet_name=None):
                 val_num = parse_currency_str(val_str)
                 cell = f"{column_prefix}{row}"
                 update_balance_sheet(
-                    excel_path=excel_path,
+                    template_path=template_path,
+                    output_path=output_path,
                     value=val_num,
                     cell=cell,
                     sheet_name=sheet_name,
@@ -209,6 +223,8 @@ def handle_dre(pdf_source, excel_path, column_prefix, sheet_name=None):
 
 def process_balance_analysis_pdf(
     pdf_bytes,
+    template_path,
+    output_path,
     balanco_column_prefix,
     dre_column_prefix
 ):
@@ -218,14 +234,16 @@ def process_balance_analysis_pdf(
     if 'balanco' in sections:
         handle_balanco(
             pdf_source=pdf_bytes,
-            excel_path='static/files/analise_balanco_modelo.xlsx',
+            template_path=template_path,
+            output_path=output_path,
             column_prefix=balanco_column_prefix,
             sheet_name='COMPARATIVO BALANÇO'
         )
     if 'dre' in sections:
         handle_dre(
             pdf_source=pdf_bytes,
-            excel_path='static/files/analise_balanco_modelo.xlsx',
+            template_path=template_path,
+            output_path=output_path,
             column_prefix=dre_column_prefix,
             sheet_name='DRE e CICLO'
         )
